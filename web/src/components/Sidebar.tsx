@@ -16,13 +16,13 @@ interface Props {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: "#666",
-  running: "#fbbf24",
-  ready: "#3b82f6",
-  submitted: "#a394ff",
-  won: "#22c55e",
-  lost: "#ef4444",
-  error: "#ef4444",
+  pending: "#5e6d65",
+  running: "#e3b341",
+  ready: "#4cb8a8",
+  submitted: "#34c77c",
+  won: "#34c77c",
+  lost: "#e26b6b",
+  error: "#e26b6b",
 };
 
 export function Sidebar({
@@ -35,7 +35,7 @@ export function Sidebar({
   onReset,
   busy,
 }: Props) {
-  const [showScenario, setShowScenario] = useState(true);
+  const [demoOpen, setDemoOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
   const confirmTimer = useRef<number | null>(null);
@@ -78,6 +78,10 @@ export function Sidebar({
     ({ s }) => s.reviewState === "needs_you" || s.reviewState === "error",
   ).length;
 
+  const openCount = ranked.filter(
+    ({ d }) => d.status !== "submitted" && d.status !== "error",
+  ).length;
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -89,38 +93,7 @@ export function Sidebar({
           <img src="/logo.png" alt="" className="brand-mark" />
           <span>Chargebucks</span>
         </button>
-        <div className="sidebar-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowScenario((v) => !v)}
-            disabled={busy}
-          >
-            {showScenario ? "Hide scenario" : "+ Create scenario"}
-          </button>
-          <button
-            className="btn"
-            onClick={onTrigger}
-            disabled={busy}
-            title="Run: stripe trigger charge.dispute.created"
-          >
-            Quick trigger (mock)
-          </button>
-          <button
-            className={`btn btn-danger ${confirmReset ? "btn-danger-armed" : ""}`}
-            onClick={handleReset}
-            disabled={busy || resetting}
-            title="Wipe DB rows and trace files; re-seed products + customers"
-          >
-            {resetting
-              ? "Resetting…"
-              : confirmReset
-                ? "Click again to confirm"
-                : "Reset DB"}
-          </button>
-        </div>
       </div>
-
-      {showScenario && <ScenarioCreator onCreated={onScenarioCreated} />}
 
       <nav className="sidebar-nav">
         <button
@@ -135,14 +108,25 @@ export function Sidebar({
         </button>
       </nav>
 
+      <div className="sidebar-quickstats">
+        <div className="sqs-tile">
+          <div className="sqs-label">Open</div>
+          <div className="sqs-value">{openCount}</div>
+        </div>
+        <div className={`sqs-tile ${needsYouCount > 0 ? "alert" : "good"}`}>
+          <div className="sqs-label">Needs you</div>
+          <div className="sqs-value">{needsYouCount}</div>
+        </div>
+      </div>
+
       <div className="sidebar-section-label">
-        <span>All disputes</span>
+        <span>Disputes queue</span>
         <span className="muted">{ranked.length}</span>
       </div>
 
       <ul className="dispute-list">
         {ranked.length === 0 && (
-          <li className="empty-list">No disputes yet</li>
+          <li className="empty-list">No disputes yet — open Demo tools to create one.</li>
         )}
         {ranked.map(({ d, s }) => {
           const flagged =
@@ -156,7 +140,7 @@ export function Sidebar({
               <div className="dispute-item-row">
                 <span
                   className="status-dot"
-                  style={{ background: STATUS_COLOR[d.status] ?? "#666" }}
+                  style={{ background: STATUS_COLOR[d.status] ?? "#5e6d65" }}
                 />
                 <span className="dispute-id">{d.disputeId}</span>
                 <span
@@ -165,7 +149,9 @@ export function Sidebar({
                 />
               </div>
               <div className="dispute-item-row meta">
-                <span>{formatMoney(d.amount, d.currency)}</span>
+                <span className="dispute-amount">
+                  {formatMoney(d.amount, d.currency)}
+                </span>
                 <span className="reason-pill">
                   {reasonLabel(d.reasonCode ?? d.reason)}
                 </span>
@@ -175,6 +161,46 @@ export function Sidebar({
           );
         })}
       </ul>
+
+      <div className="demo-tools">
+        <button
+          className={`demo-tools-toggle ${demoOpen ? "open" : ""}`}
+          onClick={() => setDemoOpen((v) => !v)}
+          aria-expanded={demoOpen}
+          title="Demo controls — create scenarios, trigger, or reset"
+        >
+          <span className="demo-tools-icon">⚙</span>
+          <span>Demo tools</span>
+          <span className="chev">▶</span>
+        </button>
+        {demoOpen && (
+          <div className="demo-tools-body">
+            <ScenarioCreator onCreated={onScenarioCreated} />
+            <div className="demo-tools-actions">
+              <button
+                className="btn btn-ghost"
+                onClick={onTrigger}
+                disabled={busy}
+                title="Run: stripe trigger charge.dispute.created"
+              >
+                Quick trigger (mock)
+              </button>
+              <button
+                className={`btn btn-danger ${confirmReset ? "btn-danger-armed" : ""}`}
+                onClick={handleReset}
+                disabled={busy || resetting}
+                title="Wipe DB rows and trace files; re-seed products + customers"
+              >
+                {resetting
+                  ? "Resetting…"
+                  : confirmReset
+                    ? "Click again to confirm"
+                    : "Reset database"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

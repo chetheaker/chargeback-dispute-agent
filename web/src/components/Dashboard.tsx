@@ -20,6 +20,7 @@ interface Props {
 }
 
 type Filter = "all" | "open" | "needs_you" | "ready" | "submitted";
+type View = "table" | "kanban";
 
 interface Row {
   d: DisputeSummary;
@@ -28,6 +29,7 @@ interface Row {
 
 export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
   const [filter, setFilter] = useState<Filter>("open");
+  const [view, setView] = useState<View>("table");
 
   const rows = useMemo<Row[]>(
     () =>
@@ -80,7 +82,10 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
       <header className="dashboard-header">
         <div>
           <div className="eyebrow-row">
-            <div className="eyebrow">Inbox</div>
+            <div className="eyebrow">
+              <span className="dashboard-eyebrow-divider" />
+              Inbox
+            </div>
             <HowItWorks />
           </div>
           <h1>Disputes</h1>
@@ -171,6 +176,27 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
               the dispute.
             </p>
           </div>
+          <div className="view-toggle" role="tablist" aria-label="View">
+            <button
+              className={view === "table" ? "active" : ""}
+              onClick={() => setView("table")}
+              type="button"
+              title="Table view"
+            >
+              <span className="vt-icon">☰</span> Table
+            </button>
+            <button
+              className={view === "kanban" ? "active" : ""}
+              onClick={() => setView("kanban")}
+              type="button"
+              title="Kanban view"
+            >
+              <span className="vt-icon">▦</span> Kanban
+            </button>
+          </div>
+        </div>
+
+        <div className="dashboard-toolbar">
           <div className="filter-chips">
             <Chip active={filter === "open"} onClick={() => setFilter("open")}>
               Open · {open.length}
@@ -202,6 +228,8 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
 
         {filtered.length === 0 ? (
           <EmptyState filter={filter} onTrigger={onTrigger} busy={busy} />
+        ) : view === "kanban" ? (
+          <KanbanBoard rows={filtered} onSelect={onSelect} />
         ) : (
           <PriorityTable rows={filtered} onSelect={onSelect} />
         )}
@@ -395,6 +423,128 @@ function PriorityTable({
         </div>
       ))}
     </div>
+  );
+}
+
+type KanbanColumn = {
+  id: "needs" | "working" | "ready" | "submitted";
+  title: string;
+  description: string;
+};
+
+const KANBAN_COLUMNS: KanbanColumn[] = [
+  { id: "needs", title: "Needs you", description: "Agent flagged for review" },
+  { id: "working", title: "Agent working", description: "Investigating evidence" },
+  { id: "ready", title: "Ready to submit", description: "Approve or edit" },
+  { id: "submitted", title: "Submitted", description: "In flight with Stripe" },
+];
+
+function bucketFor(row: Row): KanbanColumn["id"] | null {
+  const { s, d } = row;
+  if (s.reviewState === "needs_you" || s.reviewState === "error") return "needs";
+  if (s.reviewState === "agent_working" || d.status === "running") return "working";
+  if (s.reviewState === "ready_to_submit" || d.status === "ready") return "ready";
+  if (s.reviewState === "submitted" || d.status === "submitted") return "submitted";
+  if (d.status === "pending") return "working";
+  return null;
+}
+
+function KanbanBoard({
+  rows,
+  onSelect,
+}: {
+  rows: Row[];
+  onSelect: (id: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const out: Record<KanbanColumn["id"], Row[]> = {
+      needs: [],
+      working: [],
+      ready: [],
+      submitted: [],
+    };
+    for (const r of rows) {
+      const b = bucketFor(r);
+      if (b) out[b].push(r);
+    }
+    for (const k of Object.keys(out) as KanbanColumn["id"][]) {
+      out[k].sort((a, b) => {
+        if (a.s.priorityScore !== b.s.priorityScore) {
+          return b.s.priorityScore - a.s.priorityScore;
+        }
+        return b.d.updatedAt - a.d.updatedAt;
+      });
+    }
+    return out;
+  }, [rows]);
+
+  return (
+    <div className="kanban">
+      {KANBAN_COLUMNS.map((col) => {
+        const items = grouped[col.id];
+        return (
+          <div key={col.id} className={`kanban-col col-${col.id}`}>
+            <div className="kanban-col-head">
+              <span className="kanban-col-pulse" />
+              <span className="kanban-col-title">{col.title}</span>
+              <span className="kanban-col-count">{items.length}</span>
+            </div>
+            <div className="kanban-cards">
+              {items.length === 0 ? (
+                <div className="kanban-empty">{col.description}</div>
+              ) : (
+                items.map((row) => (
+                  <KanbanCard
+                    key={row.d.disputeId}
+                    row={row}
+                    onSelect={onSelect}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function KanbanCard({
+  row,
+  onSelect,
+}: {
+  row: Row;
+  onSelect: (id: string) => void;
+}) {
+  const { d, s } = row;
+  const urgent = s.hoursUntilDue < 48 && d.status !== "submitted";
+  return (
+    <article
+      className="kanban-card"
+      onClick={() => onSelect(d.disputeId)}
+    >
+      <div className="kanban-card-top">
+        <PriorityBadge priority={s.priority} />
+        <code className="kanban-card-id">{d.disputeId}</code>
+      </div>
+      <div className="kanban-card-mid">
+        <span className="kanban-card-amount">
+          {formatMoney(d.amount, d.currency)}
+        </span>
+        <span className="reason-pill">
+          {reasonLabel(d.reasonCode ?? d.reason)}
+        </span>
+      </div>
+      {s.confidence !== null && <ConfidenceBar value={s.confidence} />}
+      <div className={`kanban-card-foot ${urgent ? "urgent" : ""}`}>
+        <span>
+          {d.status === "submitted"
+            ? formatRelTime(d.updatedAt)
+            : formatDeadline(s.hoursUntilDue) + " left"}
+        </span>
+        <span className="muted small">{s.recommendedAction} →</span>
+      </div>
+    </article>
   );
 }
 
