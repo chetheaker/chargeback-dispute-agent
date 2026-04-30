@@ -150,6 +150,87 @@ code, pre {
   text-align: center;
 }
 
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Scenario creator */
+.scenario-creator {
+  padding: 14px 16px;
+  background: var(--bg-elev-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scenario-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.field select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.category-pill {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.15);
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.scenario-btn {
+  margin-top: 4px;
+}
+
+.error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
 /* Main */
 .main {
   overflow: auto;
