@@ -196,5 +196,6 @@ console.log(`[server] listening on :${PORT}  AUTO_SUBMIT=${AUTO_SUBMIT}`);
 
 export default {
   port: PORT,
+  idleTimeout: 0,
   fetch: app.fetch,
 };

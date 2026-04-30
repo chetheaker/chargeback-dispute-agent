@@ -1,5 +1,6 @@
 import { stripe } from "../stripe/client.ts";
 import { trace } from "../trace.ts";
+import { makeTextPdf } from "./pdf.ts";
 import type { AgentResult, StripeEvidence } from "../types.ts";
 
 export async function submitDispute(
@@ -17,19 +18,20 @@ export async function submitDispute(
   for (const [field, content] of Object.entries(result.evidenceFileContent)) {
     if (!content) continue;
     try {
+      const pdf = await makeTextPdf(prettyTitle(field), content);
       const uploaded = await stripe.files.create({
         purpose: "dispute_evidence",
         file: {
-          data: Buffer.from(content),
-          name: `${field}.txt`,
-          type: "text/plain",
+          data: Buffer.from(pdf),
+          name: `${field}.pdf`,
+          type: "application/pdf",
         },
       });
       fileIds[field] = uploaded.id;
       await trace(result.disputeId, "submit.file_uploaded", {
         field,
         fileId: uploaded.id,
-        size: content.length,
+        bytes: pdf.byteLength,
       });
     } catch (err) {
       await trace(result.disputeId, "submit.file_upload_error", {
@@ -64,4 +66,11 @@ export async function submitDispute(
     await trace(result.disputeId, "submit.error", { error: String(err) });
     throw err;
   }
+}
+
+function prettyTitle(field: string): string {
+  return field
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
