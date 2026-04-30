@@ -63,11 +63,23 @@ export interface AgentResult {
   evidenceRecords: EvidenceRecord[];
 }
 
+export type DisputeStatus =
+  | "pending"
+  | "running"
+  | "ready"
+  | "submitted"
+  | "won"
+  | "lost"
+  | "error";
+
 export interface DisputeRecord {
   context: DisputeContext;
   result?: AgentResult;
-  status: "pending" | "running" | "ready" | "submitted" | "error";
+  status: DisputeStatus;
   stripeStatus?: string;
+  outcome?: "won" | "lost";
+  outcomeAt?: number;
+  outcomeSource?: "stripe" | "simulated";
   error?: string;
   updatedAt: number;
 }

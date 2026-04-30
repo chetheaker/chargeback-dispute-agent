@@ -12,6 +12,8 @@ const STATUS_LABEL: Record<string, string> = {
   running: "Agent running…",
   ready: "Ready to submit",
   submitted: "Submitted to Stripe",
+  won: "Won",
+  lost: "Lost",
   error: "Error",
 };
 

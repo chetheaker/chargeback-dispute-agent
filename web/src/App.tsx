@@ -14,6 +14,7 @@ import { Timeline } from "./components/Timeline";
 import { EvidenceCards } from "./components/EvidenceCards";
 import { Verdict } from "./components/Verdict";
 import { StripePayload } from "./components/StripePayload";
+import { Outcome } from "./components/Outcome";
 
 export function App() {
   const [list, setList] = useState<DisputeSummary[]>([]);
@@ -140,6 +141,16 @@ export function App() {
                 <Timeline events={traceEvents} />
               </section>
               <section className="col">
+                {record && (
+                  <Outcome
+                    record={record}
+                    onChanged={async () => {
+                      const r = await getDispute(record.context.disputeId);
+                      setRecord(r);
+                      refreshList();
+                    }}
+                  />
+                )}
                 <Verdict result={record?.result ?? null} />
                 <EvidenceCards records={evidenceRecords} />
                 <StripePayload result={record?.result ?? null} />

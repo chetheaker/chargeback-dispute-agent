@@ -347,10 +347,17 @@ code, pre {
   background: #0f2a1c;
 }
 
-.status-badge.status-error {
+.status-badge.status-error,
+.status-badge.status-lost {
   border-color: #5d1f1f;
   color: var(--red);
   background: #2a1010;
+}
+
+.status-badge.status-won {
+  border-color: #1e4d33;
+  color: var(--green);
+  background: #0f2a1c;
 }
 
 .btn {
@@ -399,6 +406,121 @@ code, pre {
   color: var(--red);
   border-color: var(--red);
   animation: pulse 1s ease-in-out infinite alternate;
+}
+
+.btn-success {
+  background: var(--green);
+  color: #06150e;
+  border-color: var(--green);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #4ade80;
+  border-color: #4ade80;
+}
+
+.btn-danger-solid {
+  background: var(--red);
+  color: #2a0606;
+  border-color: var(--red);
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  background: #f87171;
+  border-color: #f87171;
+}
+
+/* Outcome panel */
+.outcome {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.outcome-pending h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin: 0;
+  font-weight: 600;
+}
+
+.outcome-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.outcome p.small {
+  font-size: 12px;
+  margin: 0 0 12px 0;
+}
+
+.dashboard-link {
+  font-size: 12px;
+}
+
+.outcome-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.outcome-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.outcome-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.outcome-won {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(34, 197, 94, 0.04));
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.outcome-won .outcome-icon {
+  background: var(--green);
+  color: #06150e;
+}
+
+.outcome-lost {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04));
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.outcome-lost .outcome-icon {
+  background: var(--red);
+  color: #2a0606;
+}
+
+.outcome-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.outcome-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.outcome-source {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 @keyframes pulse {

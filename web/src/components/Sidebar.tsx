@@ -17,7 +17,9 @@ const STATUS_COLOR: Record<string, string> = {
   pending: "#666",
   running: "#fbbf24",
   ready: "#3b82f6",
-  submitted: "#22c55e",
+  submitted: "#a394ff",
+  won: "#22c55e",
+  lost: "#ef4444",
   error: "#ef4444",
 };
 

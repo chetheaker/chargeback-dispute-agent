@@ -1,11 +1,17 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
-mkdirSync("data", { recursive: true });
+// Set DB_PATH if your repo lives in an iCloud / Dropbox / OneDrive synced
+// folder — those break SQLite's POSIX file locking (SQLITE_IOERR_VNODE).
+// Example: DB_PATH=/tmp/chargeback.db
+const DB_PATH = process.env.DB_PATH ?? "data/app.db";
+mkdirSync(dirname(DB_PATH), { recursive: true });
 
-export const db = new Database("data/app.db", { create: true });
+export const db = new Database(DB_PATH, { create: true });
 
-db.exec("PRAGMA journal_mode = WAL");
+// Default rollback journal. WAL mode is faster but requires reliable vnode
+// locking which cloud-synced folders don't provide.
 db.exec("PRAGMA foreign_keys = ON");
 
 db.exec(`
