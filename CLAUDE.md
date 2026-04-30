@@ -1,39 +1,122 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code / Cursor agents working in this repo.
 
-## Project context
+## Project: Chargebucks
 
-Hackathon project: **Chargeback Dispute Agent**. Autonomous agent that ingests a chargeback notification (mock Stripe webhook), gathers evidence, classifies the dispute code, drafts a representment narrative, formats it to card-network specs, and submits.
+Hackathon project. **Chargebucks** is a chargeback-dispute autopilot for indie devs on Stripe. It receives a `charge.dispute.created` webhook, runs an Anthropic tool-use agent that gathers evidence from a fixed set of mock sources, classifies the dispute, drafts a representment narrative with inline evidence citations, packs the result into Stripe's `evidence` schema (text fields + uploaded PDF files), and either stages or submits via `disputes.update`.
 
-This is a greenfield repository — no code has been written yet. Decisions made during the first build pass will define the structure; revisit this file once an initial scaffold lands.
+A live React UI streams the agent's trace over SSE so the demo isn't a black box.
 
-## End-to-end flow the code must implement
+> The product/brand name is **Chargebucks**. The git repo is still named `chargeback-dispute-agent` — leave it that way unless explicitly asked to rename.
 
-1. **Webhook intake** — accept a mock Stripe `charge.dispute.created` payload.
-2. **Evidence gathering (agent loop)** — pull order details, customer comms history, IP/device fingerprint, delivery confirmation, prior order history, accepted T&Cs. Each source should be a distinct tool/function the agent calls so missing data is visible in traces.
-3. **Reason-code classification** — map dispute to a card-network reason code (Visa / Mastercard schemes differ — keep classifier output network-agnostic, then translate at format time).
-4. **Representment narrative** — LLM drafts the argument citing specific evidence items by ID. Narrative must be auditable: every claim should reference a gathered evidence record.
-5. **Network-specific assembly** — format evidence bundle to the target network's submission spec (Visa CE 3.0 / Mastercard Compelling Evidence).
-6. **Submit** — mock submission endpoint for the demo; real Stripe `dispute.update` call is a stretch goal.
+## Stack
 
-## Architectural guidance for the first pass
+- Runtime: Bun (TypeScript everywhere, `.ts` imports with explicit extensions)
+- Backend: Hono on `:3000`
+- LLM: Anthropic SDK, default model `claude-sonnet-4-6` (override with `ANTHROPIC_MODEL`). Prompt caching enabled on the system prompt.
+- Stripe SDK pinned to API version `2024-09-30.acacia`
+- Frontend: Vite + React 18 on `:5173`, proxies `/api` and `/events` to backend
+- Live updates: per-dispute JSONL trace tailed → SSE
+- PDF generation: `pdf-lib` (file evidence is rendered to PDF before upload)
 
-- **Keep evidence sources behind a uniform interface.** Each source (orders, comms, device, delivery, history, T&Cs) should expose `fetch(dispute_context) -> EvidenceRecord`. The agent decides which to call; do not hard-code a fixed sequence — that defeats the "autonomous" point.
-- **Separate "what to argue" from "how to format".** Classification + narrative generation are network-agnostic. Network-specific spec assembly is a final adapter layer. Mixing these will hurt later when a second network is added.
-- **Evidence records need stable IDs.** The narrative cites them; the assembled bundle attaches them. If IDs are generated per-call, citations break.
-- **Mock data lives next to the tool that returns it.** A single `fixtures/` blob will become unmaintainable; co-locate per-source mocks with the source module.
-- **Trace the agent loop.** For demo purposes, capture each tool call + reasoning step. A simple JSONL trace is enough; this is what makes the demo compelling vs. a black box.
+## Commands
 
-## Stack — undecided
+```bash
+bun install
+cd web && bun install && cd ..
+cp .env.example .env  # fill in keys
 
-No language/framework chosen yet. Likely candidates given the brief: Python (Anthropic SDK, fast for agent loops) or TypeScript (matches Stripe ecosystem). Pick one in the first commit and update this file with run/test/lint commands at that point.
+bun run dev:all       # spawns backend + Vite together (scripts/dev.ts)
+bun run dev           # backend only, hot reload
+bun run dev:web       # vite only
 
-When AI framework choice comes up, default to the latest Claude models (Opus 4.7 / Sonnet 4.6) and enable prompt caching — the evidence-gathering loop will repeatedly send the same dispute context, so caching is high-leverage.
+bun run stripe:listen   # forwards Stripe events to /webhook (paste whsec_ into .env)
+bun run stripe:trigger  # fires charge.dispute.created
+bun run typecheck       # tsc --noEmit on both server and web
+```
 
-## What to update here once code exists
+There is no test runner yet. There is no linter wired up. If you add either, update this file.
 
-- Build / dev / test / lint commands (including how to run a single test).
-- Where the agent loop lives and how to invoke a dispute end-to-end locally.
-- How to add a new evidence source or a new card network adapter.
-- Any environment variables required (Stripe test key, Anthropic key, etc.).
+## Required env
+
+```
+STRIPE_SECRET_KEY        sk_test_...
+STRIPE_WEBHOOK_SECRET    whsec_...   (from `stripe listen`)
+ANTHROPIC_API_KEY        sk-ant-...
+PORT                     default 3000
+ANTHROPIC_MODEL          default claude-sonnet-4-6
+AUTO_SUBMIT              "true" auto-finalizes; default "false" stages and waits for UI click
+```
+
+## End-to-end flow
+
+1. **Webhook** (`POST /webhook`) — verifies Stripe signature, ignores anything that isn't `charge.dispute.created`, builds a `DisputeContext`, and starts the pipeline. Duplicate webhooks for an in-flight dispute are deduped via the `inflight` map in `src/index.ts`.
+2. **Pipeline** (`handleDispute` in `src/index.ts`) — saves a `DisputeRecord` (`status: running`), runs the agent, then calls `submitDispute(...)` with `submit: AUTO_SUBMIT`.
+3. **Agent loop** (`src/agent/loop.ts`) — Anthropic tool-use loop, max 12 turns. Tools are 6 `fetch_*` evidence fetchers + `finalize_dispute`. The agent decides which sources to call based on the Stripe reason. The system prompt biases choice (`fraudulent` → device/delivery/terms/history, `product_not_received` → order/comms/delivery, etc.). Loop ends when the model calls `finalize_dispute` or stops with no tool call.
+4. **Submit** (`src/agent/submit.ts`) — for each `evidenceFileContent` field, render a one-page-or-more PDF (`src/agent/pdf.ts`), upload via `stripe.files.create({ purpose: "dispute_evidence" })`, and substitute the file IDs into the evidence dict alongside the text fields. Then `stripe.disputes.update(id, { evidence, submit, metadata })`.
+5. **Trace** — every meaningful step writes a JSONL line to `traces/<disputeId>.jsonl` (`src/trace.ts`). The SSE endpoint tails that file and streams events to the UI (`src/sse.ts`, hybrid `fs.watch` + 500ms poll fallback). Per-dispute state lives at `traces/<disputeId>.record.json`.
+
+## Layout
+
+```
+src/
+  index.ts            Hono app: webhook, /api/*, /events/*, pipeline orchestration
+  trace.ts            JSONL tracer (append-only)
+  sse.ts              Trace tail → SSE
+  store.ts            DisputeRecord persistence (traces/<id>.record.json)
+  types.ts            DisputeContext, EvidenceRecord, AgentResult, Stripe field unions
+  stripe/
+    client.ts         Stripe client (apiVersion 2024-09-30.acacia)
+    verify.ts         constructEventAsync wrapper
+  agent/
+    loop.ts           Anthropic tool-use loop with prompt caching
+    tools.ts          Tool schemas + evidenceFetchers map
+    submit.ts         File upload (PDF) + disputes.update
+    pdf.ts            pdf-lib text-to-PDF (Latin-1 only, naive word-wrap)
+  evidence/           One file per source: orders, comms, device, delivery, history, terms
+                      Each exports fetchX(ctx) -> EvidenceRecord with stable id (record IDs are
+                      cited by the narrative; do not generate them per-call differently)
+web/
+  src/
+    App.tsx                      Polls /api/disputes, opens SSE on selection
+    api.ts                       fetch helpers (relative paths, proxied by vite)
+    useTraceStream.ts            EventSource hook
+    components/
+      Sidebar.tsx                Dispute list + "+ New test dispute" → POST /api/demo/trigger
+      DisputeHeader.tsx          ID, amount, reason, Re-run / Submit buttons
+      Timeline.tsx               Live event list with icon/summary per event type
+      EvidenceCards.tsx          Expandable per-record cards (anchored to id="ev-<id>" for citation links)
+      Verdict.tsx                Reason code + narrative; [ev_...] tokens become anchor links
+      StripePayload.tsx          Final evidence dict preview
+  vite.config.ts                 Proxies /api and /events → :3000
+scripts/
+  dev.ts                         Spawns server + vite with prefixed log streams
+traces/                          Generated at runtime; gitignored
+```
+
+## HTTP routes
+
+- `POST /webhook` — Stripe receiver; verifies signature.
+- `GET  /api/disputes` — list of summaries (id, amount, reason, status, ...).
+- `GET  /api/disputes/:id` — full `DisputeRecord` including `result`.
+- `GET  /events/:id` — SSE stream of trace events.
+- `POST /api/disputes/:id/submit` — finalize via `disputes.update({ submit: true })`.
+- `POST /api/disputes/:id/rerun` — re-fetch dispute from Stripe and re-run the agent.
+- `POST /api/demo/trigger` — shells out `stripe trigger charge.dispute.created` (Stripe CLI must be installed).
+
+## Conventions to preserve
+
+- **Evidence record IDs are stable and content-derived.** `ev_order_<orderId>`, `ev_delivery_<tracking>`, `ev_terms_<version>`, etc. The narrative cites them; if you change ID generation, citations break in the UI's anchor links.
+- **One file per evidence source.** Mock data lives next to the fetcher. To add a source: create `src/evidence/<x>.ts` exporting `fetchX(ctx) -> EvidenceRecord`, then register it in `evidenceFetchers` and `evidenceTools` in `src/agent/tools.ts`. Add a kind icon in `web/src/components/EvidenceCards.tsx` if you want a glyph.
+- **Stripe evidence fields are typed.** See `StripeEvidenceTextField` and `StripeEvidenceFileField` unions in `src/types.ts`. The agent emits the file fields as plain text; `submit.ts` renders each to PDF and uploads.
+- **Trace events are typed by string.** Frontend (`Timeline.tsx`) and backend agree on type strings (`agent.tool_use`, `agent.evidence`, `agent.finalized`, `submit.file_uploaded`, `submit.ok`, etc.). Add new event types in both places.
+- **No fixed tool sequence.** Don't hardcode evidence-gathering order — the agent picks. The system prompt nudges priority by reason code, that's it.
+- **Network-agnostic for now.** The agent emits a Stripe-shaped evidence dict directly. Visa CE 3.0 / Mastercard Compelling Evidence adapter layer is not built; if it is, keep classification/narrative network-agnostic and translate at format time.
+- **Latin-1 only in file evidence.** `pdf.ts` sanitizes non-ASCII to `?` because `pdf-lib` Standard fonts can't encode it. If you need Unicode, embed a TTF.
+
+## Open / unfinished
+
+- No real test suite. `bun run typecheck` is the only check.
+- `evidenceText` and `evidenceFileContent` are currently passed to Stripe as-is — no validation that the agent only used legal field names. The TS unions describe what's allowed but the model output isn't schema-validated at runtime.
+- Stripe test mode does not actually run evidence through Visa/MC. The "Submitted" status is Stripe-side only.

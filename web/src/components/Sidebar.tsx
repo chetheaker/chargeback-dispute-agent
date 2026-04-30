@@ -28,7 +28,7 @@ export function Sidebar({
       <div className="sidebar-header">
         <div className="brand">
           <span className="brand-mark">CB</span>
-          <span>Disputes</span>
+          <span>Chargebucks</span>
         </div>
         <button
           className="btn btn-primary"

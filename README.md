@@ -1,6 +1,6 @@
-# Chargeback Dispute Agent
+# Chargebucks
 
-Autonomous agent that receives a Stripe `charge.dispute.created` webhook, gathers evidence, drafts a representment, and submits the dispute back to Stripe. Includes a live React UI for demoing the agent's work.
+Chargeback-dispute autopilot for indie devs on Stripe. Receives a `charge.dispute.created` webhook, runs an agent that gathers evidence, drafts a representment, and submits back to Stripe. Includes a live React UI for demoing the agent's work.
 
 ## Stack
 

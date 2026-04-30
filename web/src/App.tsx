@@ -111,7 +111,7 @@ export function App() {
       <main className="main">
         {!selected && (
           <div className="empty">
-            <h1>Chargeback Dispute Agent</h1>
+            <h1>Chargebucks</h1>
             <p>
               Trigger a test dispute via the sidebar, or fire one from the
               terminal:

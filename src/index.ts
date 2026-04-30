@@ -24,7 +24,7 @@ app.use("/events/*", cors());
 
 const inflight = new Map<string, Promise<unknown>>();
 
-app.get("/", (c) => c.text("chargeback-dispute-agent up"));
+app.get("/", (c) => c.text("chargebucks up"));
 
 app.post("/webhook", async (c) => {
   const sig = c.req.header("stripe-signature") ?? null;
