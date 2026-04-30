@@ -14,6 +14,7 @@ import { Timeline } from "./components/Timeline";
 import { EvidenceCards } from "./components/EvidenceCards";
 import { Verdict } from "./components/Verdict";
 import { StripePayload } from "./components/StripePayload";
+import { Dashboard } from "./components/Dashboard";
 
 export function App() {
   const [list, setList] = useState<DisputeSummary[]>([]);
@@ -23,16 +24,13 @@ export function App() {
 
   const traceEvents = useTraceStream(selected);
 
-  async function refreshList(autoSelect = false) {
+  async function refreshList() {
     const items = await listDisputes();
     setList(items);
-    if (autoSelect && items.length && !selected) {
-      setSelected(items[0]!.disputeId);
-    }
   }
 
   useEffect(() => {
-    refreshList(true);
+    refreshList();
     const t = setInterval(refreshList, 3000);
     return () => clearInterval(t);
   }, []);
@@ -105,6 +103,7 @@ export function App() {
         items={list}
         selected={selected}
         onSelect={setSelected}
+        onHome={() => setSelected(null)}
         onTrigger={onTrigger}
         onScenarioCreated={() => setTimeout(refreshList, 1500)}
         onReset={() => {
@@ -117,17 +116,22 @@ export function App() {
       />
       <main className="main">
         {!selected && (
-          <div className="empty">
-            <h1>Chargebucks</h1>
-            <p>
-              Trigger a test dispute via the sidebar, or fire one from the
-              terminal:
-            </p>
-            <pre>stripe trigger charge.dispute.created</pre>
-          </div>
+          <Dashboard
+            disputes={list}
+            onSelect={setSelected}
+            onTrigger={onTrigger}
+            busy={busy}
+          />
         )}
         {selected && (
           <>
+            <button
+              className="back-link"
+              onClick={() => setSelected(null)}
+              type="button"
+            >
+              ← Back to dashboard
+            </button>
             <DisputeHeader
               record={record}
               onSubmit={onSubmit}

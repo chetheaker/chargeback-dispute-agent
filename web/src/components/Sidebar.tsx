@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DisputeSummary } from "../types";
 import { ScenarioCreator } from "./ScenarioCreator";
 import { resetDatabase } from "../api";
+import { computeSignals, formatMoney, reasonLabel } from "../utils/priority";
 
 interface Props {
   items: DisputeSummary[];
   selected: string | null;
   onSelect: (id: string) => void;
+  onHome: () => void;
   onTrigger: () => void;
   onScenarioCreated: () => void;
   onReset: () => void;
@@ -25,6 +27,7 @@ export function Sidebar({
   items,
   selected,
   onSelect,
+  onHome,
   onTrigger,
   onScenarioCreated,
   onReset,
@@ -58,13 +61,32 @@ export function Sidebar({
     }
   };
 
+  const ranked = useMemo(() => {
+    return items
+      .map((d) => ({ d, s: computeSignals(d) }))
+      .sort((a, b) => {
+        if (a.s.priorityScore !== b.s.priorityScore) {
+          return b.s.priorityScore - a.s.priorityScore;
+        }
+        return b.d.updatedAt - a.d.updatedAt;
+      });
+  }, [items]);
+
+  const needsYouCount = ranked.filter(
+    ({ s }) => s.reviewState === "needs_you" || s.reviewState === "error",
+  ).length;
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="brand">
-          <span className="brand-mark">CB</span>
+        <button
+          className="brand-button"
+          onClick={onHome}
+          title="Back to dashboard"
+        >
+          <img src="/logo.png" alt="" className="brand-mark" />
           <span>Chargebucks</span>
-        </div>
+        </button>
         <div className="sidebar-actions">
           <button
             className="btn btn-primary"
@@ -98,31 +120,58 @@ export function Sidebar({
 
       {showScenario && <ScenarioCreator onCreated={onScenarioCreated} />}
 
+      <nav className="sidebar-nav">
+        <button
+          className={`sidebar-nav-item ${selected === null ? "active" : ""}`}
+          onClick={onHome}
+        >
+          <span className="nav-icon">▦</span>
+          <span>Dashboard</span>
+          {needsYouCount > 0 && (
+            <span className="nav-badge">{needsYouCount}</span>
+          )}
+        </button>
+      </nav>
+
+      <div className="sidebar-section-label">
+        <span>All disputes</span>
+        <span className="muted">{ranked.length}</span>
+      </div>
+
       <ul className="dispute-list">
-        {items.length === 0 && (
+        {ranked.length === 0 && (
           <li className="empty-list">No disputes yet</li>
         )}
-        {items.map((d) => (
-          <li
-            key={d.disputeId}
-            className={`dispute-item ${selected === d.disputeId ? "active" : ""}`}
-            onClick={() => onSelect(d.disputeId)}
-          >
-            <div className="dispute-item-row">
-              <span
-                className="status-dot"
-                style={{ background: STATUS_COLOR[d.status] ?? "#666" }}
-              />
-              <span className="dispute-id">{d.disputeId}</span>
-            </div>
-            <div className="dispute-item-row meta">
-              <span>
-                {(d.amount / 100).toFixed(2)} {d.currency.toUpperCase()}
-              </span>
-              <span className="reason-pill">{d.reasonCode ?? d.reason}</span>
-            </div>
-          </li>
-        ))}
+        {ranked.map(({ d, s }) => {
+          const flagged =
+            s.reviewState === "needs_you" || s.reviewState === "error";
+          return (
+            <li
+              key={d.disputeId}
+              className={`dispute-item ${selected === d.disputeId ? "active" : ""} ${flagged ? "flagged" : ""}`}
+              onClick={() => onSelect(d.disputeId)}
+            >
+              <div className="dispute-item-row">
+                <span
+                  className="status-dot"
+                  style={{ background: STATUS_COLOR[d.status] ?? "#666" }}
+                />
+                <span className="dispute-id">{d.disputeId}</span>
+                <span
+                  className={`prio-pip prio-${s.priority}`}
+                  title={`Priority: ${s.priority}`}
+                />
+              </div>
+              <div className="dispute-item-row meta">
+                <span>{formatMoney(d.amount, d.currency)}</span>
+                <span className="reason-pill">
+                  {reasonLabel(d.reasonCode ?? d.reason)}
+                </span>
+              </div>
+              {flagged && <div className="dispute-flag">⚠ needs you</div>}
+            </li>
+          );
+        })}
       </ul>
     </aside>
   );
