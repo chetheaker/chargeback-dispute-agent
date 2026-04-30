@@ -48,6 +48,17 @@ app.post("/webhook", async (c) => {
     return c.text("invalid signature", 400);
   }
 
+  if (
+    event.type === "charge.dispute.closed" ||
+    event.type === "charge.dispute.funds_reinstated" ||
+    event.type === "charge.dispute.funds_withdrawn" ||
+    event.type === "charge.dispute.updated"
+  ) {
+    const dispute = event.data.object as Stripe.Dispute;
+    await applyStripeOutcome(dispute, event.type);
+    return c.json({ received: true, applied: event.type });
+  }
+
   if (event.type !== "charge.dispute.created") {
     return c.json({ received: true, ignored: event.type });
   }
@@ -63,6 +74,34 @@ app.post("/webhook", async (c) => {
   startPipeline(ctx);
   return c.json({ received: true, disputeId: ctx.disputeId });
 });
+
+async function applyStripeOutcome(d: Stripe.Dispute, eventType: string) {
+  const rec = await loadRecord(d.id);
+  if (!rec) {
+    console.warn(`[webhook] outcome for unknown dispute ${d.id}`);
+    return;
+  }
+  rec.stripeStatus = d.status;
+  // Stripe dispute status enum:
+  //   warning_needs_response | warning_under_review | warning_closed
+  //   needs_response | under_review | charge_refunded | won | lost
+  if (d.status === "won") {
+    rec.status = "won";
+    rec.outcome = "won";
+    rec.outcomeAt = Date.now();
+    rec.outcomeSource = "stripe";
+  } else if (d.status === "lost") {
+    rec.status = "lost";
+    rec.outcome = "lost";
+    rec.outcomeAt = Date.now();
+    rec.outcomeSource = "stripe";
+  }
+  await saveRecord(rec);
+  await trace(d.id, `webhook.${eventType.split(".").pop()}`, {
+    stripe_status: d.status,
+    derived_outcome: rec.outcome,
+  });
+}
 
 app.get("/api/disputes", async (c) => {
   const recs = await listRecords();
@@ -102,6 +141,32 @@ app.post("/api/disputes/:id/submit", async (c) => {
     rec.stripeStatus = updated.status;
     await saveRecord(rec);
     return c.json({ ok: true, status: updated.status });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/disputes/:id/concede", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const closed = await stripe.disputes.close(id);
+    await trace(id, "dispute.conceded", {
+      stripe_status: closed.status,
+    });
+    // Webhook will land via charge.dispute.closed and update the record;
+    // mirror it here for immediate UI feedback.
+    const rec = await loadRecord(id);
+    if (rec) {
+      rec.stripeStatus = closed.status;
+      if (closed.status === "lost") {
+        rec.status = "lost";
+        rec.outcome = "lost";
+        rec.outcomeAt = Date.now();
+        rec.outcomeSource = "stripe";
+      }
+      await saveRecord(rec);
+    }
+    return c.json({ ok: true, status: closed.status });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }

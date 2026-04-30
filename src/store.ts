@@ -8,11 +8,25 @@ async function ensureDir() {
   await mkdir(DIR, { recursive: true });
 }
 
+export type DisputeStatus =
+  | "pending"
+  | "running"
+  | "ready"
+  | "submitted"
+  | "won"
+  | "lost"
+  | "error";
+
+export type OutcomeSource = "stripe" | "simulated";
+
 export interface DisputeRecord {
   context: DisputeContext;
   result?: AgentResult;
-  status: "pending" | "running" | "ready" | "submitted" | "error";
+  status: DisputeStatus;
   stripeStatus?: string;
+  outcome?: "won" | "lost";
+  outcomeAt?: number;
+  outcomeSource?: OutcomeSource;
   error?: string;
   updatedAt: number;
 }
