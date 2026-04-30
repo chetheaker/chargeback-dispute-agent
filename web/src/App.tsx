@@ -106,6 +106,13 @@ export function App() {
         selected={selected}
         onSelect={setSelected}
         onTrigger={onTrigger}
+        onScenarioCreated={() => setTimeout(refreshList, 1500)}
+        onReset={() => {
+          setSelected(null);
+          setRecord(null);
+          setList([]);
+          refreshList();
+        }}
         busy={busy}
       />
       <main className="main">

@@ -4,6 +4,7 @@ node_modules
 bun.lockb
 dist
 traces/
+data/
 *.log
 .DS_Store
 web/dist

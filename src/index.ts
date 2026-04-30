@@ -13,11 +13,21 @@ import {
   type DisputeRecord,
 } from "./store.ts";
 import { streamTrace } from "./sse.ts";
+import { queries, resetDatabase } from "./db.ts";
+import { seedIfEmpty } from "./seed.ts";
+import { createScenario, type ScenarioReason } from "./scenarios.ts";
+import { rm, readdir } from "node:fs/promises";
 import type { DisputeContext } from "./types.ts";
 
 const app = new Hono();
 const PORT = Number(process.env.PORT ?? 3000);
 const AUTO_SUBMIT = process.env.AUTO_SUBMIT === "true";
+
+const seeded = seedIfEmpty();
+if (seeded) console.log("[db] seeded products + customers");
+console.log(
+  `[db] products=${queries.listProducts.all().length} customers=${queries.listCustomers.all().length}`,
+);
 
 app.use("/api/*", cors());
 app.use("/events/*", cors());
@@ -43,7 +53,7 @@ app.post("/webhook", async (c) => {
   }
 
   const dispute = event.data.object as Stripe.Dispute;
-  const ctx = toContext(dispute);
+  const ctx = await toContext(dispute);
 
   if (inflight.has(ctx.disputeId)) {
     await trace(ctx.disputeId, "webhook.duplicate", {});
@@ -101,13 +111,82 @@ app.post("/api/disputes/:id/rerun", async (c) => {
   const id = c.req.param("id");
   try {
     const dispute = await stripe.disputes.retrieve(id);
-    const ctx = toContext(dispute);
+    const ctx = await toContext(dispute);
     if (inflight.has(ctx.disputeId)) {
       return c.json({ ok: true, status: "in_progress" });
     }
     startPipeline(ctx);
     return c.json({ ok: true, disputeId: ctx.disputeId });
   } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.get("/api/products", (c) => {
+  const products = queries.listProducts.all();
+  return c.json(
+    products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      priceMinor: p.price_minor,
+      currency: p.currency,
+      category: p.category,
+      sku: p.sku,
+    })),
+  );
+});
+
+app.get("/api/customers", (c) => {
+  const customers = queries.listCustomers.all();
+  return c.json(
+    customers.map((cust) => ({
+      id: cust.id,
+      name: cust.name,
+      email: cust.email,
+      city: cust.address_city,
+      country: cust.address_country,
+    })),
+  );
+});
+
+app.post("/api/db/reset", async (c) => {
+  try {
+    resetDatabase();
+    seedIfEmpty();
+    // wipe trace + record files
+    try {
+      const entries = await readdir("traces");
+      await Promise.all(
+        entries
+          .filter(
+            (e) => e.endsWith(".jsonl") || e.endsWith(".record.json"),
+          )
+          .map((e) => rm(`traces/${e}`, { force: true })),
+      );
+    } catch {}
+    inflight.clear();
+    return c.json({
+      ok: true,
+      products: queries.listProducts.all().length,
+      customers: queries.listCustomers.all().length,
+    });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/scenarios", async (c) => {
+  try {
+    const body = (await c.req.json()) as {
+      productId: string;
+      reason: ScenarioReason;
+      customerId?: string;
+    };
+    const result = await createScenario(body);
+    return c.json(result);
+  } catch (err) {
+    console.error("[scenario]", err);
     return c.json({ error: String(err) }, 500);
   }
 });
@@ -127,24 +206,77 @@ app.post("/api/demo/trigger", async (c) => {
   }
 });
 
-function toContext(d: Stripe.Dispute): DisputeContext {
-  const charge = typeof d.charge === "string" ? d.charge : d.charge.id;
+async function toContext(d: Stripe.Dispute): Promise<DisputeContext> {
+  const chargeId = typeof d.charge === "string" ? d.charge : d.charge.id;
+
+  let internalOrderId: string | undefined;
+  let internalCustomerId: string | undefined;
+  let customerEmail: string | undefined;
+  let stripeCustomerId: string | undefined;
+  let paymentIntentId: string | undefined;
+
+  if (typeof d.charge !== "string") {
+    customerEmail = d.charge.billing_details?.email ?? undefined;
+    stripeCustomerId =
+      typeof d.charge.customer === "string"
+        ? d.charge.customer
+        : (d.charge.customer?.id ?? undefined);
+    paymentIntentId =
+      typeof d.charge.payment_intent === "string"
+        ? d.charge.payment_intent
+        : (d.charge.payment_intent?.id ?? undefined);
+    internalOrderId = d.charge.metadata?.internal_order_id;
+    internalCustomerId = d.charge.metadata?.internal_customer_id;
+  }
+
+  // The webhook payload may not have charge expanded — and metadata typically
+  // lives on the PaymentIntent we created, not the Charge. Retrieve PI to read.
+  if (!internalOrderId) {
+    try {
+      if (!paymentIntentId) {
+        const ch = await stripe.charges.retrieve(chargeId);
+        paymentIntentId =
+          typeof ch.payment_intent === "string"
+            ? ch.payment_intent
+            : (ch.payment_intent?.id ?? undefined);
+        customerEmail = customerEmail ?? ch.billing_details?.email ?? undefined;
+        stripeCustomerId =
+          stripeCustomerId ??
+          (typeof ch.customer === "string"
+            ? ch.customer
+            : (ch.customer?.id ?? undefined));
+        if (ch.metadata?.internal_order_id) {
+          internalOrderId = ch.metadata.internal_order_id;
+          internalCustomerId = ch.metadata.internal_customer_id;
+        }
+      }
+      if (paymentIntentId && !internalOrderId) {
+        const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+        internalOrderId = pi.metadata?.internal_order_id;
+        internalCustomerId = pi.metadata?.internal_customer_id;
+        customerEmail = customerEmail ?? pi.receipt_email ?? undefined;
+        stripeCustomerId =
+          stripeCustomerId ??
+          (typeof pi.customer === "string"
+            ? pi.customer
+            : (pi.customer?.id ?? undefined));
+      }
+    } catch (err) {
+      console.warn("[webhook] could not enrich dispute metadata:", err);
+    }
+  }
+
   return {
     disputeId: d.id,
-    chargeId: charge,
+    chargeId,
+    paymentIntentId,
     amount: d.amount,
     currency: d.currency,
     reason: d.reason,
-    customerEmail:
-      typeof d.charge === "string"
-        ? undefined
-        : (d.charge.billing_details?.email ?? undefined),
-    customerId:
-      typeof d.charge === "string"
-        ? undefined
-        : typeof d.charge.customer === "string"
-          ? d.charge.customer
-          : (d.charge.customer?.id ?? undefined),
+    customerEmail,
+    customerId: stripeCustomerId,
+    internalOrderId,
+    internalCustomerId,
     createdAt: d.created * 1000,
   };
 }

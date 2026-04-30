@@ -7,6 +7,7 @@ import type {
   StripeEvidenceText,
 } from "../types.ts";
 import { trace } from "../trace.ts";
+import { formatAmount } from "../format.ts";
 import { allTools, evidenceFetchers } from "./tools.ts";
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
@@ -42,10 +43,11 @@ export async function runAgent(ctx: DisputeContext): Promise<AgentResult> {
             `Dispute received from Stripe.\n\n` +
             `dispute_id: ${ctx.disputeId}\n` +
             `charge_id: ${ctx.chargeId}\n` +
-            `amount: ${ctx.amount} ${ctx.currency}\n` +
+            `amount: ${formatAmount(ctx.amount, ctx.currency)} (Stripe raw minor units: ${ctx.amount} ${ctx.currency})\n` +
             `stripe_reason: ${ctx.reason}\n` +
             `customer_email: ${ctx.customerEmail ?? "unknown"}\n` +
             `customer_id: ${ctx.customerId ?? "unknown"}\n\n` +
+            `When you cite the amount in the narrative, use the formatted amount (e.g. ${formatAmount(ctx.amount, ctx.currency)}), never the raw minor units.\n\n` +
             `Investigate and finalize.`,
         },
       ],

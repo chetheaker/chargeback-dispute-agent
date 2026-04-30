@@ -17,11 +17,15 @@ export interface EvidenceRecord<T = unknown> {
 export interface DisputeContext {
   disputeId: string;
   chargeId: string;
+  paymentIntentId?: string;
   amount: number;
   currency: string;
   reason: string;
   customerEmail?: string;
   customerId?: string;
+  /** Internal IDs from PaymentIntent metadata (set when scenario was created via /api/scenarios). */
+  internalOrderId?: string;
+  internalCustomerId?: string;
   createdAt: number;
 }
 
