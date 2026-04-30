@@ -10,6 +10,7 @@
     "start": "bun run src/index.ts",
     "stripe:listen": "stripe listen --forward-to localhost:3000/webhook",
     "stripe:trigger": "stripe trigger charge.dispute.created",
+    "force:outcome": "bun run scripts/force-outcome.ts",
     "typecheck": "tsc --noEmit && cd web && bunx tsc --noEmit"
   },
   "dependencies": {
