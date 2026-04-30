@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DisputeSummary } from "../types";
 import { ScenarioCreator } from "./ScenarioCreator";
+import { resetDatabase } from "../api";
 
 interface Props {
   items: DisputeSummary[];
@@ -8,6 +9,7 @@ interface Props {
   onSelect: (id: string) => void;
   onTrigger: () => void;
   onScenarioCreated: () => void;
+  onReset: () => void;
   busy: boolean;
 }
 
@@ -25,9 +27,36 @@ export function Sidebar({
   onSelect,
   onTrigger,
   onScenarioCreated,
+  onReset,
   busy,
 }: Props) {
   const [showScenario, setShowScenario] = useState(true);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const confirmTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!confirmReset) return;
+    confirmTimer.current = window.setTimeout(() => setConfirmReset(false), 4000);
+    return () => {
+      if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+    };
+  }, [confirmReset]);
+
+  const handleReset = async () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
+    }
+    setConfirmReset(false);
+    setResetting(true);
+    try {
+      await resetDatabase();
+      onReset();
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -51,6 +80,18 @@ export function Sidebar({
             title="Run: stripe trigger charge.dispute.created"
           >
             Quick trigger (mock)
+          </button>
+          <button
+            className={`btn btn-danger ${confirmReset ? "btn-danger-armed" : ""}`}
+            onClick={handleReset}
+            disabled={busy || resetting}
+            title="Wipe DB rows and trace files; re-seed products + customers"
+          >
+            {resetting
+              ? "Resetting…"
+              : confirmReset
+                ? "Click again to confirm"
+                : "Reset DB"}
           </button>
         </div>
       </div>

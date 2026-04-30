@@ -181,6 +181,18 @@ export interface CommRow {
   body: string;
 }
 
+export function resetDatabase() {
+  // Drop in dependency order; FOREIGN KEYS = ON requires it.
+  db.transaction(() => {
+    db.exec("DELETE FROM communications");
+    db.exec("DELETE FROM terms_acceptances");
+    db.exec("DELETE FROM shipments");
+    db.exec("DELETE FROM orders");
+    db.exec("DELETE FROM customers");
+    db.exec("DELETE FROM products");
+  })();
+}
+
 export const queries = {
   listProducts: db.query<ProductRow, []>("SELECT * FROM products ORDER BY price_minor"),
   getProduct: db.query<ProductRow, [string]>("SELECT * FROM products WHERE id = ?"),

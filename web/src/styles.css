@@ -383,6 +383,29 @@ code, pre {
   border-color: var(--accent-2);
 }
 
+.btn-danger {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+.btn-danger:hover:not(:disabled) {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.btn-danger-armed {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  border-color: var(--red);
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  from { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  to   { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+}
+
 /* Reason pill */
 .reason-pill {
   font-family: var(--mono);

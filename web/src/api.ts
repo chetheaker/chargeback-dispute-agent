@@ -60,3 +60,9 @@ export async function createScenario(
   if (!r.ok) throw new Error(`createScenario ${r.status} ${await r.text()}`);
   return r.json();
 }
+
+export async function resetDatabase() {
+  const r = await fetch("/api/db/reset", { method: "POST" });
+  if (!r.ok) throw new Error(`reset ${r.status}`);
+  return r.json();
+}

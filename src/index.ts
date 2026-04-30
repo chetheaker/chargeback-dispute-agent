@@ -13,9 +13,10 @@ import {
   type DisputeRecord,
 } from "./store.ts";
 import { streamTrace } from "./sse.ts";
-import { queries } from "./db.ts";
+import { queries, resetDatabase } from "./db.ts";
 import { seedIfEmpty } from "./seed.ts";
 import { createScenario, type ScenarioReason } from "./scenarios.ts";
+import { rm, readdir } from "node:fs/promises";
 import type { DisputeContext } from "./types.ts";
 
 const app = new Hono();
@@ -147,6 +148,32 @@ app.get("/api/customers", (c) => {
       country: cust.address_country,
     })),
   );
+});
+
+app.post("/api/db/reset", async (c) => {
+  try {
+    resetDatabase();
+    seedIfEmpty();
+    // wipe trace + record files
+    try {
+      const entries = await readdir("traces");
+      await Promise.all(
+        entries
+          .filter(
+            (e) => e.endsWith(".jsonl") || e.endsWith(".record.json"),
+          )
+          .map((e) => rm(`traces/${e}`, { force: true })),
+      );
+    } catch {}
+    inflight.clear();
+    return c.json({
+      ok: true,
+      products: queries.listProducts.all().length,
+      customers: queries.listCustomers.all().length,
+    });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
 });
 
 app.post("/api/scenarios", async (c) => {
