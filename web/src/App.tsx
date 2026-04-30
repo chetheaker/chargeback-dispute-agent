@@ -16,10 +16,14 @@ import { Verdict } from "./components/Verdict";
 import { StripePayload } from "./components/StripePayload";
 import { Outcome } from "./components/Outcome";
 import { Dashboard } from "./components/Dashboard";
+import { Integrations } from "./components/Integrations";
+
+type View = "dashboard" | "integrations";
 
 export function App() {
   const [list, setList] = useState<DisputeSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [view, setView] = useState<View>("dashboard");
   const [record, setRecord] = useState<DisputeRecord | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,8 +107,18 @@ export function App() {
       <Sidebar
         items={list}
         selected={selected}
-        onSelect={setSelected}
-        onHome={() => setSelected(null)}
+        view={view}
+        onSelect={(id) => {
+          setSelected(id);
+        }}
+        onHome={() => {
+          setSelected(null);
+          setView("dashboard");
+        }}
+        onIntegrations={() => {
+          setSelected(null);
+          setView("integrations");
+        }}
         onTrigger={onTrigger}
         onScenarioCreated={() => setTimeout(refreshList, 1500)}
         onReset={() => {
@@ -116,7 +130,7 @@ export function App() {
         busy={busy}
       />
       <main className="main">
-        {!selected && (
+        {!selected && view === "dashboard" && (
           <Dashboard
             disputes={list}
             onSelect={setSelected}
@@ -124,11 +138,15 @@ export function App() {
             busy={busy}
           />
         )}
+        {!selected && view === "integrations" && <Integrations />}
         {selected && (
           <>
             <button
               className="back-link"
-              onClick={() => setSelected(null)}
+              onClick={() => {
+                setSelected(null);
+                setView("dashboard");
+              }}
               type="button"
             >
               ← Back to dashboard

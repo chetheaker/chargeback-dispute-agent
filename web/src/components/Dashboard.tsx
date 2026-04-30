@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { DisputeSummary } from "../types";
 import {
   computeSignals,
+  computeSubmittedSignals,
   formatDeadline,
   formatMoney,
   formatRelTime,
@@ -29,7 +30,7 @@ interface Row {
 
 export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
   const [filter, setFilter] = useState<Filter>("open");
-  const [view, setView] = useState<View>("table");
+  const [view, setView] = useState<View>("kanban");
 
   const rows = useMemo<Row[]>(
     () =>
@@ -44,14 +45,42 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
     ({ d }) => d.status !== "submitted" && d.status !== "error",
   );
   const submitted = rows.filter(({ d }) => d.status === "submitted");
-  const won = submitted.filter(({ d }) => d.stripeStatus === "won");
-  const dueSoon = open.filter(({ s }) => s.hoursUntilDue < 48);
   const needsYou = rows.filter(
     ({ s }) => s.reviewState === "needs_you" || s.reviewState === "error",
   );
-  const atRiskCents = open.reduce((sum, { d }) => sum + d.amount, 0);
-  const winRate =
-    submitted.length > 0 ? (won.length / submitted.length) * 100 : null;
+
+  // Value-focused outcome stats derived from submitted signals
+  const submittedAgg = useMemo(() => {
+    const sigs = submitted.map(({ d }) => ({
+      d,
+      x: computeSubmittedSignals(d),
+    }));
+    const recoveredCents = sigs.reduce(
+      (sum, { x }) => sum + x.recoveredCents,
+      0,
+    );
+    const inReview = sigs.filter(
+      ({ x }) =>
+        x.outcomeState === "under_review" ||
+        x.outcomeState === "needs_response",
+    );
+    const inReviewCents = inReview.reduce(
+      (sum, { x }) => sum + x.fundsAtStakeCents,
+      0,
+    );
+    const won = sigs.filter(({ x }) => x.outcomeState === "won").length;
+    const lost = sigs.filter(({ x }) => x.outcomeState === "lost").length;
+    const decided = won + lost;
+    const winRate = decided > 0 ? (won / decided) * 100 : null;
+    return {
+      recoveredCents,
+      inReviewCount: inReview.length,
+      inReviewCents,
+      won,
+      lost,
+      winRate,
+    };
+  }, [submitted]);
 
   const filtered = useMemo(() => {
     const list = applyFilter(rows, filter);
@@ -62,20 +91,6 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
       return b.d.updatedAt - a.d.updatedAt;
     });
   }, [rows, filter]);
-
-  const recent = useMemo(
-    () =>
-      rows
-        .filter(
-          ({ d }) =>
-            d.status === "submitted" ||
-            d.status === "error" ||
-            d.status === "ready",
-        )
-        .sort((a, b) => b.d.updatedAt - a.d.updatedAt)
-        .slice(0, 6),
-    [rows],
-  );
 
   return (
     <div className="dashboard">
@@ -107,39 +122,53 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
         </div>
       </header>
 
-      <div className="stats-row">
+      <div className="stats-row stats-row-4">
         <StatCard
-          label="Open"
-          value={open.length.toString()}
-          sublabel={open.length === 1 ? "dispute" : "disputes"}
+          label="Recovered"
+          value={shortMoney(submittedAgg.recoveredCents)}
+          sublabel={
+            submittedAgg.won > 0
+              ? `${submittedAgg.won} dispute${submittedAgg.won === 1 ? "" : "s"} won`
+              : "no wins yet"
+          }
+          tone={submittedAgg.recoveredCents > 0 ? "good" : undefined}
         />
         <StatCard
-          label="At risk"
-          value={shortMoney(atRiskCents)}
-          sublabel="across open disputes"
-          tone={atRiskCents > 0 ? "warn" : undefined}
+          label="In review"
+          value={submittedAgg.inReviewCount.toString()}
+          sublabel={
+            submittedAgg.inReviewCents > 0
+              ? `${shortMoney(submittedAgg.inReviewCents)} waiting on issuer`
+              : "nothing waiting"
+          }
         />
         <StatCard
-          label="Due < 48h"
-          value={dueSoon.length.toString()}
-          sublabel={dueSoon.length === 1 ? "dispute" : "disputes"}
-          tone={dueSoon.length > 0 ? "warn" : undefined}
+          label="Needs your attention"
+          value={needsYou.length.toString()}
+          sublabel={
+            needsYou.length > 0
+              ? "review before submitting"
+              : "you're all caught up"
+          }
+          tone={needsYou.length > 0 ? "alert" : "good"}
         />
         <StatCard
           label="Win rate"
-          value={winRate !== null ? `${winRate.toFixed(0)}%` : "—"}
+          value={
+            submittedAgg.winRate !== null
+              ? `${submittedAgg.winRate.toFixed(0)}%`
+              : "—"
+          }
           sublabel={
-            submitted.length > 0
-              ? `${won.length} of ${submitted.length} submitted`
+            submittedAgg.won + submittedAgg.lost > 0
+              ? `${submittedAgg.won}W · ${submittedAgg.lost}L`
               : "no outcomes yet"
           }
-          tone={winRate !== null && winRate >= 60 ? "good" : undefined}
-        />
-        <StatCard
-          label="Needs you"
-          value={needsYou.length.toString()}
-          sublabel="agent flagged"
-          tone={needsYou.length > 0 ? "alert" : "good"}
+          tone={
+            submittedAgg.winRate !== null && submittedAgg.winRate >= 60
+              ? "good"
+              : undefined
+          }
         />
       </div>
 
@@ -147,10 +176,10 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
         <section className="dash-section needs-section">
           <div className="section-head">
             <div>
-              <h2>Needs your input</h2>
+              <h2>Needs your attention</h2>
               <p className="muted">
-                The agent surfaced these for human review. A few minutes here
-                is worth a lot.
+                The agent flagged these for human review — a borderline call,
+                a high-value claim, or a tight deadline.
               </p>
             </div>
           </div>
@@ -167,13 +196,15 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
         </section>
       )}
 
+      <SubmittedDisputes disputes={disputes} onSelect={onSelect} />
+
       <section className="dash-section">
         <div className="section-head">
           <div>
-            <h2>Priority queue</h2>
+            <h2>Active queue</h2>
             <p className="muted">
-              Ranked by amount, deadline, and reason risk. Tap any row to open
-              the dispute.
+              Disputes the agent is investigating or has prepped for review.
+              Ranked by amount, deadline, and reason risk.
             </p>
           </div>
           <div className="view-toggle" role="tablist" aria-label="View">
@@ -235,46 +266,6 @@ export function Dashboard({ disputes, onSelect, onTrigger, busy }: Props) {
         )}
       </section>
 
-      <SubmittedDisputes disputes={disputes} onSelect={onSelect} />
-
-      {recent.length > 0 && (
-        <section className="dash-section">
-          <div className="section-head">
-            <div>
-              <h2>Recent activity</h2>
-            </div>
-          </div>
-          <ul className="activity-feed">
-            {recent.map(({ d, s }) => (
-              <li
-                key={d.disputeId}
-                className="activity-row"
-                onClick={() => onSelect(d.disputeId)}
-              >
-                <span className={`activity-dot dot-${d.status}`} />
-                <div className="activity-text">
-                  <strong>{labelFor(d)}</strong>
-                  <span className="muted">
-                    {" · "}
-                    {formatMoney(d.amount, d.currency)}
-                    {" · "}
-                    {reasonLabel(d.reasonCode ?? d.reason)}
-                  </span>
-                </div>
-                <code className="activity-id">{d.disputeId}</code>
-                <span className="activity-time muted">
-                  {formatRelTime(d.updatedAt)}
-                </span>
-                {s.confidence !== null && (
-                  <span className="activity-conf muted">
-                    {s.confidence}%
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }
@@ -367,7 +358,6 @@ function PriorityTable({
     <div className="queue-table">
       <div className="queue-head">
         <div>Priority</div>
-        <div>Dispute</div>
         <div>Amount</div>
         <div>Reason</div>
         <div>Confidence</div>
@@ -384,14 +374,11 @@ function PriorityTable({
           <div>
             <PriorityBadge priority={s.priority} />
           </div>
-          <div className="cell-dispute">
-            <code className="cell-id">{d.disputeId}</code>
-            <span className="muted small">
-              {formatRelTime(d.updatedAt)}
-            </span>
-          </div>
           <div className="cell-amount">
-            {formatMoney(d.amount, d.currency)}
+            <span className="cell-amount-value">
+              {formatMoney(d.amount, d.currency)}
+            </span>
+            <span className="muted small">{formatRelTime(d.updatedAt)}</span>
           </div>
           <div>
             <span className="reason-pill">
@@ -524,13 +511,12 @@ function KanbanCard({
       onClick={() => onSelect(d.disputeId)}
     >
       <div className="kanban-card-top">
-        <PriorityBadge priority={s.priority} />
-        <code className="kanban-card-id">{d.disputeId}</code>
-      </div>
-      <div className="kanban-card-mid">
         <span className="kanban-card-amount">
           {formatMoney(d.amount, d.currency)}
         </span>
+        <PriorityBadge priority={s.priority} />
+      </div>
+      <div className="kanban-card-mid">
         <span className="reason-pill">
           {reasonLabel(d.reasonCode ?? d.reason)}
         </span>
@@ -568,7 +554,6 @@ function NeedsCard({
           {formatMoney(d.amount, d.currency)}
         </span>
       </header>
-      <code className="needs-id">{d.disputeId}</code>
       <ul className="needs-reasons">
         {s.reasonsToReview.map((r, i) => (
           <li key={i}>{r}</li>
@@ -660,13 +645,3 @@ function shortMoney(cents: number): string {
   return `$${v.toFixed(0)}`;
 }
 
-function labelFor(d: DisputeSummary): string {
-  if (d.status === "submitted") {
-    if (d.stripeStatus === "won") return "Won";
-    if (d.stripeStatus === "lost") return "Lost";
-    return "Submitted to Stripe";
-  }
-  if (d.status === "error") return "Pipeline error";
-  if (d.status === "ready") return "Agent finalized — awaiting review";
-  return d.status;
-}

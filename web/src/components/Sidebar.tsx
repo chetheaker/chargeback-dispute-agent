@@ -7,8 +7,10 @@ import { computeSignals, formatMoney, reasonLabel } from "../utils/priority";
 interface Props {
   items: DisputeSummary[];
   selected: string | null;
+  view: "dashboard" | "integrations";
   onSelect: (id: string) => void;
   onHome: () => void;
+  onIntegrations: () => void;
   onTrigger: () => void;
   onScenarioCreated: () => void;
   onReset: () => void;
@@ -28,8 +30,10 @@ const STATUS_COLOR: Record<string, string> = {
 export function Sidebar({
   items,
   selected,
+  view,
   onSelect,
   onHome,
+  onIntegrations,
   onTrigger,
   onScenarioCreated,
   onReset,
@@ -97,7 +101,7 @@ export function Sidebar({
 
       <nav className="sidebar-nav">
         <button
-          className={`sidebar-nav-item ${selected === null ? "active" : ""}`}
+          className={`sidebar-nav-item ${selected === null && view === "dashboard" ? "active" : ""}`}
           onClick={onHome}
         >
           <span className="nav-icon">▦</span>
@@ -105,6 +109,14 @@ export function Sidebar({
           {needsYouCount > 0 && (
             <span className="nav-badge">{needsYouCount}</span>
           )}
+        </button>
+        <button
+          className={`sidebar-nav-item ${selected === null && view === "integrations" ? "active" : ""}`}
+          onClick={onIntegrations}
+        >
+          <span className="nav-icon">⌬</span>
+          <span>Integrations</span>
+          <span className="nav-pill">New</span>
         </button>
       </nav>
 

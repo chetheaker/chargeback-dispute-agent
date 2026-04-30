@@ -25,82 +25,55 @@ export function SubmittedDisputes({ disputes, onSelect }: Props) {
       disputes
         .filter((d) => d.status === "submitted")
         .map((d) => ({ d, s: computeSubmittedSignals(d) }))
-        .sort((a, b) => b.s.submittedAt - a.s.submittedAt),
+        .sort((a, b) => {
+          // Surface in-flight first, decided outcomes after.
+          const order = (s: SubmittedSignals) =>
+            s.outcomeState === "needs_response"
+              ? 0
+              : s.outcomeState === "under_review"
+                ? 1
+                : 2;
+          const oa = order(a.s);
+          const ob = order(b.s);
+          if (oa !== ob) return oa - ob;
+          return b.s.submittedAt - a.s.submittedAt;
+        }),
     [disputes],
   );
 
-  const recovered = rows.reduce((sum, { s }) => sum + s.recoveredCents, 0);
-  const atStake = rows.reduce((sum, { s }) => sum + s.fundsAtStakeCents, 0);
-  const won = rows.filter(({ s }) => s.outcomeState === "won").length;
-  const lost = rows.filter(({ s }) => s.outcomeState === "lost").length;
+  if (rows.length === 0) {
+    return null;
+  }
+
   const pending = rows.filter(
     ({ s }) =>
       s.outcomeState === "under_review" || s.outcomeState === "needs_response",
   ).length;
-  const winRate = won + lost > 0 ? (won / (won + lost)) * 100 : null;
+  const won = rows.filter(({ s }) => s.outcomeState === "won").length;
+  const lost = rows.filter(({ s }) => s.outcomeState === "lost").length;
 
   return (
     <section className="dash-section">
       <div className="section-head">
         <div>
-          <h2>Submitted disputes</h2>
+          <h2>Submitted &amp; waiting on the issuer</h2>
           <p className="muted">
-            What's in flight with Stripe and the issuer. Outcomes can take
+            {pending} in review · {won} won · {lost} lost. Outcomes can take
             30–75 days depending on network.
           </p>
         </div>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="empty-card">
-          <strong>Nothing submitted yet</strong>
-          <span className="muted">
-            Once you approve a dispute, it lands here with live status,
-            response ETAs, and recovered funds.
-          </span>
-        </div>
-      ) : (
-        <>
-          <div className="submitted-stats">
-            <MiniStat
-              label="Recovered"
-              value={formatMoneyShort(recovered)}
-              tone="good"
-            />
-            <MiniStat
-              label="In review"
-              value={pending.toString()}
-              sub={pending === 1 ? "dispute" : "disputes"}
-            />
-            <MiniStat
-              label="Win rate"
-              value={winRate !== null ? `${winRate.toFixed(0)}%` : "—"}
-              sub={
-                won + lost > 0
-                  ? `${won}W · ${lost}L`
-                  : "no outcomes yet"
-              }
-              tone={winRate !== null && winRate >= 60 ? "good" : undefined}
-            />
-            <MiniStat
-              label="At stake"
-              value={formatMoneyShort(atStake)}
-              sub={`${rows.length} submitted`}
-            />
-          </div>
-
-          <ul className="submitted-list">
-            {rows.map(({ d, s }) => (
-              <SubmittedRow
-                key={d.disputeId}
-                d={d}
-                s={s}
-                onSelect={onSelect}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+      <ul className="submitted-list">
+        {rows.map(({ d, s }) => (
+          <SubmittedRow
+            key={d.disputeId}
+            d={d}
+            s={s}
+            onSelect={onSelect}
+          />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -131,8 +104,6 @@ function SubmittedRow({
             </span>
           </div>
           <div className="srow-sub muted">
-            <code className="srow-id">{d.disputeId}</code>
-            <span className="dot">·</span>
             <span>Submitted {formatRelTime(s.submittedAt)}</span>
             {s.confidenceAtSubmit !== null && (
               <>
@@ -219,29 +190,3 @@ function NetworkBadge({ network }: { network: SubmittedSignals["network"] }) {
   );
 }
 
-function MiniStat({
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  tone?: "good" | "warn";
-}) {
-  return (
-    <div className={`mini-stat ${tone ? `mini-${tone}` : ""}`}>
-      <div className="mini-label">{label}</div>
-      <div className="mini-value">{value}</div>
-      {sub && <div className="mini-sub muted">{sub}</div>}
-    </div>
-  );
-}
-
-function formatMoneyShort(cents: number): string {
-  const v = cents / 100;
-  if (v >= 10000) return `$${(v / 1000).toFixed(1)}k`;
-  if (v >= 1000) return `$${(v / 1000).toFixed(2)}k`;
-  return `$${v.toFixed(2)}`;
-}
