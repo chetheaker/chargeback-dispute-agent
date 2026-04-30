@@ -25,38 +25,49 @@ export interface DisputeContext {
   createdAt: number;
 }
 
-export type StripeEvidenceField =
+export type StripeEvidenceTextField =
+  | "access_activity_log"
   | "billing_address"
-  | "customer_communication"
+  | "cancellation_policy_disclosure"
+  | "cancellation_rebuttal"
   | "customer_email_address"
   | "customer_name"
   | "customer_purchase_ip"
-  | "customer_signature"
-  | "duplicate_charge_documentation"
   | "duplicate_charge_explanation"
   | "duplicate_charge_id"
   | "product_description"
-  | "receipt"
-  | "refund_policy"
   | "refund_policy_disclosure"
   | "refund_refusal_explanation"
   | "service_date"
-  | "service_documentation"
   | "shipping_address"
   | "shipping_carrier"
   | "shipping_date"
-  | "shipping_documentation"
   | "shipping_tracking_number"
-  | "uncategorized_text"
+  | "uncategorized_text";
+
+export type StripeEvidenceFileField =
+  | "cancellation_policy"
+  | "customer_communication"
+  | "customer_signature"
+  | "duplicate_charge_documentation"
+  | "receipt"
+  | "refund_policy"
+  | "service_documentation"
+  | "shipping_documentation"
   | "uncategorized_file";
 
-export type StripeEvidence = Partial<Record<StripeEvidenceField, string>>;
+export type StripeEvidenceText = Partial<Record<StripeEvidenceTextField, string>>;
+export type StripeEvidenceFiles = Partial<Record<StripeEvidenceFileField, string>>;
+export type StripeEvidence = Partial<
+  Record<StripeEvidenceTextField | StripeEvidenceFileField, string>
+>;
 
 export interface AgentResult {
   disputeId: string;
   reasonCode: string;
   narrative: string;
-  evidence: StripeEvidence;
+  evidenceText: StripeEvidenceText;
+  evidenceFileContent: StripeEvidenceFiles;
   citedEvidenceIds: string[];
   evidenceRecords: EvidenceRecord[];
 }

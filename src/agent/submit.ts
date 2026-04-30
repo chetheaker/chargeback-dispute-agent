@@ -1,6 +1,6 @@
 import { stripe } from "../stripe/client.ts";
 import { trace } from "../trace.ts";
-import type { AgentResult } from "../types.ts";
+import type { AgentResult, StripeEvidence } from "../types.ts";
 
 export async function submitDispute(
   result: AgentResult,
@@ -9,12 +9,45 @@ export async function submitDispute(
   const submit = opts.submit ?? false;
   await trace(result.disputeId, "submit.prepare", {
     submit,
-    fields: Object.keys(result.evidence),
+    textFields: Object.keys(result.evidenceText),
+    fileFields: Object.keys(result.evidenceFileContent),
   });
+
+  const fileIds: Record<string, string> = {};
+  for (const [field, content] of Object.entries(result.evidenceFileContent)) {
+    if (!content) continue;
+    try {
+      const uploaded = await stripe.files.create({
+        purpose: "dispute_evidence",
+        file: {
+          data: Buffer.from(content),
+          name: `${field}.txt`,
+          type: "text/plain",
+        },
+      });
+      fileIds[field] = uploaded.id;
+      await trace(result.disputeId, "submit.file_uploaded", {
+        field,
+        fileId: uploaded.id,
+        size: content.length,
+      });
+    } catch (err) {
+      await trace(result.disputeId, "submit.file_upload_error", {
+        field,
+        error: String(err),
+      });
+      throw err;
+    }
+  }
+
+  const evidence: StripeEvidence = {
+    ...result.evidenceText,
+    ...fileIds,
+  };
 
   try {
     const updated = await stripe.disputes.update(result.disputeId, {
-      evidence: result.evidence as Record<string, string>,
+      evidence: evidence as Record<string, string>,
       submit,
       metadata: {
         agent_reason_code: result.reasonCode,
@@ -24,6 +57,7 @@ export async function submitDispute(
     await trace(result.disputeId, "submit.ok", {
       status: updated.status,
       submit,
+      fields: Object.keys(evidence),
     });
     return updated;
   } catch (err) {

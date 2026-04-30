@@ -3,7 +3,8 @@ import type {
   AgentResult,
   DisputeContext,
   EvidenceRecord,
-  StripeEvidence,
+  StripeEvidenceFiles,
+  StripeEvidenceText,
 } from "../types.ts";
 import { trace } from "../trace.ts";
 import { allTools, evidenceFetchers } from "./tools.ts";
@@ -55,7 +56,8 @@ export async function runAgent(ctx: DisputeContext): Promise<AgentResult> {
     reason_code: string;
     narrative: string;
     cited_evidence_ids: string[];
-    stripe_evidence: StripeEvidence;
+    evidence_text: StripeEvidenceText;
+    evidence_files: StripeEvidenceFiles;
   };
   let finalized: Finalized | null = null;
 
@@ -158,7 +160,8 @@ export async function runAgent(ctx: DisputeContext): Promise<AgentResult> {
     disputeId: ctx.disputeId,
     reasonCode: finalized.reason_code,
     narrative: finalized.narrative,
-    evidence: finalized.stripe_evidence,
+    evidenceText: finalized.evidence_text,
+    evidenceFileContent: finalized.evidence_files,
     citedEvidenceIds: finalized.cited_evidence_ids,
     evidenceRecords: Array.from(evidenceById.values()),
   };
@@ -166,7 +169,8 @@ export async function runAgent(ctx: DisputeContext): Promise<AgentResult> {
   await trace(ctx.disputeId, "agent.finalized", {
     reasonCode: result.reasonCode,
     citedCount: result.citedEvidenceIds.length,
-    fields: Object.keys(result.evidence),
+    textFields: Object.keys(result.evidenceText),
+    fileFields: Object.keys(result.evidenceFileContent),
   });
 
   return result;

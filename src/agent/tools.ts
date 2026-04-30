@@ -60,7 +60,7 @@ export const evidenceTools: Anthropic.Tool[] = [
 export const finalizeTool: Anthropic.Tool = {
   name: "finalize_dispute",
   description:
-    "Call this once you have gathered enough evidence. Returns the final reason code, representment narrative, the Stripe evidence dict, and the IDs of evidence records cited in the narrative.",
+    "Call this once you have gathered enough evidence. Returns the final reason code, representment narrative, the Stripe evidence (split into text fields and file fields), and the IDs of evidence records cited in the narrative.",
   input_schema: {
     type: "object",
     properties: {
@@ -79,10 +79,16 @@ export const finalizeTool: Anthropic.Tool = {
         items: { type: "string" },
         description: "All evidence record IDs cited by the narrative.",
       },
-      stripe_evidence: {
+      evidence_text: {
         type: "object",
         description:
-          "Map of Stripe evidence fields to plain-text values. Use uncategorized_text for the narrative. Populate fields relevant to the reason code (e.g., shipping_* for product_not_received, customer_purchase_ip + customer_signature for fraudulent).",
+          "Map of Stripe TEXT-only evidence fields. Allowed keys: access_activity_log, billing_address, cancellation_policy_disclosure, cancellation_rebuttal, customer_email_address, customer_name, customer_purchase_ip, duplicate_charge_explanation, duplicate_charge_id, product_description, refund_policy_disclosure, refund_refusal_explanation, service_date, shipping_address, shipping_carrier, shipping_date, shipping_tracking_number, uncategorized_text. Pack the narrative into uncategorized_text. Populate other fields relevant to the reason code.",
+        additionalProperties: { type: "string" },
+      },
+      evidence_files: {
+        type: "object",
+        description:
+          "Map of Stripe FILE evidence fields to plain-text content that will be packaged into a text file and uploaded to Stripe. Allowed keys: cancellation_policy, customer_communication, customer_signature, duplicate_charge_documentation, receipt, refund_policy, service_documentation, shipping_documentation, uncategorized_file. Provide complete textual content (e.g., for shipping_documentation, include carrier, tracking number, ship/deliver timestamps, signature). The system will upload these as text files and substitute the file IDs.",
         additionalProperties: { type: "string" },
       },
     },
@@ -90,7 +96,8 @@ export const finalizeTool: Anthropic.Tool = {
       "reason_code",
       "narrative",
       "cited_evidence_ids",
-      "stripe_evidence",
+      "evidence_text",
+      "evidence_files",
     ],
   },
 };

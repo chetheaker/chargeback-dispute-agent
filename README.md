@@ -1,71 +1,91 @@
 # Chargeback Dispute Agent
 
-Autonomous agent that receives a Stripe `charge.dispute.created` webhook, gathers evidence, drafts a representment, and submits the dispute back to Stripe.
+Autonomous agent that receives a Stripe `charge.dispute.created` webhook, gathers evidence, drafts a representment, and submits the dispute back to Stripe. Includes a live React UI for demoing the agent's work.
 
 ## Stack
 
-- Bun + Hono (TypeScript)
-- Stripe SDK (test mode)
-- Anthropic SDK (Claude tool use)
+- Backend: Bun + Hono (TypeScript), Stripe SDK, Anthropic SDK
+- Frontend: Vite + React + TypeScript
+- Live updates: Server-Sent Events tailing per-dispute JSONL trace
 
 ## Setup
 
 ```bash
 bun install
+cd web && bun install && cd ..
 cp .env.example .env
 # fill in STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ANTHROPIC_API_KEY
 ```
 
-Get the webhook secret from `stripe listen` output.
-
-## Run (3 terminals)
+## Run for demo (4 terminals)
 
 ```bash
-# 1. server
-bun run dev
+# 1. server + UI together (Hono :3000 + Vite :5173)
+bun run dev:all
 
 # 2. forward Stripe webhooks to local server
 bun run stripe:listen
+# copy the whsec_... it prints into .env, restart dev:all
 
-# 3. trigger a test dispute
-bun run stripe:trigger
+# 3. open the UI
+open http://localhost:5173
 ```
 
-Or trigger manually with a test card: charge `4000000000000259` (always disputed as fraudulent).
+Click **+ New test dispute** in the UI sidebar — it shells out `stripe trigger charge.dispute.created`. Or trigger from your own terminal.
 
-## Manual run for an existing dispute
+## Demo flow
 
-```bash
-curl -X POST http://localhost:3000/run/dp_test_abc123
-# add ?submit=true to actually submit to Stripe
-```
+1. Click **+ New test dispute** → Stripe creates a dispute, webhook fires, agent runs.
+2. Watch the **Timeline** stream events live: `agent.tool_use` → `agent.evidence` → `agent.finalized` → `submit.file_uploaded` → `submit.ok`.
+3. **Evidence cards** appear as the agent gathers them. Click to expand raw data.
+4. **Verdict** panel shows the reason code badge and the narrative with `[ev_...]` citations as clickable links to the corresponding evidence card.
+5. **Stripe submission** panel shows the final evidence dict (text fields + uploaded file references).
+6. Click **Submit to Stripe** to finalize (only enabled when status is "ready").
 
 ## Modes
 
-- `AUTO_SUBMIT=false` (default) — agent runs and stores evidence on the dispute via `disputes.update`, but does not finalize. Safe for demo.
-- `AUTO_SUBMIT=true` — agent submits the dispute (`submit: true`).
+- `AUTO_SUBMIT=false` (default) — agent stages evidence on the dispute via `disputes.update`, but does not finalize. Submission is a manual click in the UI.
+- `AUTO_SUBMIT=true` — pipeline auto-submits.
 
-## Traces
+## Backend routes
 
-Per-dispute JSONL trace at `traces/{disputeId}.jsonl`. Tail it during a demo:
-
-```bash
-tail -f traces/dp_*.jsonl
-```
+- `POST /webhook` — Stripe webhook receiver (verifies signature)
+- `GET /api/disputes` — list all known disputes
+- `GET /api/disputes/:id` — single dispute record (context, agent result, status)
+- `GET /events/:id` — SSE stream of trace events for a dispute
+- `POST /api/disputes/:id/submit` — finalize via `disputes.update({submit: true})`
+- `POST /api/disputes/:id/rerun` — re-run the agent on an existing dispute
+- `POST /api/demo/trigger` — shells out `stripe trigger charge.dispute.created`
 
 ## Layout
 
 ```
 src/
-  index.ts          Hono app, webhook + manual-run endpoints
+  index.ts          Hono app, webhook + API + SSE
   agent/
     loop.ts         Tool-use loop: evidence gathering → finalize
     tools.ts        Tool schemas (6 evidence fetchers + finalize_dispute)
-    submit.ts       stripe.disputes.update with evidence + submit flag
+    submit.ts       File uploads + stripe.disputes.update
   evidence/         Mock evidence sources, one per kind
   stripe/           Stripe client + webhook verify
+  store.ts          Per-dispute record persistence (traces/<id>.record.json)
+  sse.ts            Trace tail → SSE
   trace.ts          JSONL tracer
   types.ts
+web/
+  src/
+    App.tsx
+    components/
+      Sidebar.tsx           Dispute list + trigger button
+      DisputeHeader.tsx     ID, amount, reason, action buttons
+      Timeline.tsx          Live trace stream
+      EvidenceCards.tsx     Per-record cards with expand
+      Verdict.tsx           Reason code + narrative with citations
+      StripePayload.tsx     Final evidence preview
+    useTraceStream.ts       SSE hook
+    api.ts                  fetch helpers
+scripts/
+  dev.ts                    Spawns server + Vite together
 ```
 
 ## Adding a new evidence source
@@ -73,8 +93,8 @@ src/
 1. Add `src/evidence/foo.ts` exporting `fetchFoo(ctx) -> EvidenceRecord`.
 2. Register it in `src/agent/tools.ts` (`evidenceFetchers` map + `evidenceTools` array).
 
-## Notes for hackathon demo
+## Notes
 
 - Stripe test mode does not run evidence through Visa/MC. Submission shows the bundle accepted by Stripe; no real adjudication.
-- Reason codes use Stripe's enum (`fraudulent`, `product_not_received`, etc.), not raw network codes — Stripe abstracts the network layer.
+- File evidence fields (e.g. `customer_signature`, `shipping_documentation`) require Stripe file IDs. The agent emits text content; the submit step uploads each as `text/plain` via `stripe.files.create({purpose: 'dispute_evidence'})` and substitutes the IDs.
 - Prompt caching is enabled on the system prompt so repeated turns within a dispute are cheap.

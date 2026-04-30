@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
+    "dev:all": "bun run scripts/dev.ts",
+    "dev:web": "cd web && bun run dev",
     "start": "bun run src/index.ts",
     "stripe:listen": "stripe listen --forward-to localhost:3000/webhook",
     "stripe:trigger": "stripe trigger charge.dispute.created",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && cd web && bunx tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",

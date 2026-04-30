@@ -6,3 +6,5 @@ dist
 traces/
 *.log
 .DS_Store
+web/dist
+web/node_modules
