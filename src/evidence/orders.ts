@@ -1,4 +1,5 @@
 import type { DisputeContext, EvidenceRecord } from "../types.ts";
+import { formatAmount, toMajorUnits } from "../format.ts";
 
 export interface OrderData {
   orderId: string;
@@ -27,15 +28,16 @@ export interface OrderData {
 export async function fetchOrder(
   ctx: DisputeContext,
 ): Promise<EvidenceRecord<OrderData>> {
+  const total = toMajorUnits(ctx.amount, ctx.currency);
   const data: OrderData = {
     orderId: `ord_${ctx.chargeId.slice(-8)}`,
     placedAt: new Date(ctx.createdAt - 5 * 86400_000).toISOString(),
     items: [
-      { sku: "WIDGET-PRO", name: "Widget Pro", qty: 1, price: ctx.amount },
+      { sku: "WIDGET-PRO", name: "Widget Pro", qty: 1, price: total },
     ],
-    subtotal: ctx.amount,
+    subtotal: total,
     tax: 0,
-    total: ctx.amount,
+    total,
     currency: ctx.currency,
     billingAddress: {
       name: "Jane Customer",
@@ -55,7 +57,7 @@ export async function fetchOrder(
   return {
     id: `ev_order_${data.orderId}`,
     kind: "order",
-    summary: `Order ${data.orderId} placed ${data.placedAt} for ${data.total} ${data.currency}, billing matches shipping.`,
+    summary: `Order ${data.orderId} placed ${data.placedAt} for ${formatAmount(ctx.amount, ctx.currency)}, billing matches shipping.`,
     data,
   };
 }
